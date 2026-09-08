@@ -1,0 +1,733 @@
+# OAuth2 + OIDC Implementation in Spring Boot
+
+## Introduction
+
+OAuth2 stands for **Open Authorization**.
+
+It is an **authorization framework** that allows **secure third-party access to protected user data** without sharing credentials.
+
+Example:
+
+```
+Login to an application using Gmail
+```
+
+Instead of giving your Gmail password to the application, Gmail **authorizes the application to access limited data**.
+
+---
+
+# OAuth2 Grant Types
+
+Common OAuth2 grant types:
+
+```
+1. Authorization Code Grant
+2. Implicit Grant
+3. Client Credentials Grant
+4. Resource Owner Password Grant
+5. Refresh Token Grant
+```
+
+In this implementation we focus on:
+
+```
+Authorization Code Grant
+```
+
+---
+
+# Authorization Code Grant Flow (Recap)
+
+Actors involved:
+
+```
+1. Resource Owner (User)
+2. Client (Third-party application)
+3. Authorization Server
+4. Resource Server
+```
+
+Example:
+
+```
+User → wants to login to Instagram
+User → already has Gmail account
+Instagram → wants user data from Gmail
+```
+
+---
+
+# High Level Flow
+
+```
+1. Client registers with Authorization Server
+2. User clicks "Login with Gmail"
+3. Client redirects user to Authorization Server
+4. User authenticates
+5. Authorization Server returns Authorization Code
+6. Client exchanges code for Access Token
+7. Client calls Resource Server with token
+8. Resource Server validates token
+9. Client receives user information
+```
+
+---
+
+# OAuth2 vs OIDC
+
+## OAuth2
+
+Purpose:
+
+```
+Authorization
+```
+
+Allows third-party apps to access user data.
+
+Example:
+
+```
+Access Gmail emails
+Access Google Calendar
+```
+
+Token used:
+
+```
+Access Token
+```
+
+---
+
+## OIDC (OpenID Connect)
+
+OIDC is a layer on top of OAuth2.
+
+Purpose:
+
+```
+Authentication
+```
+
+Verifies user identity.
+
+Token used:
+
+```
+ID Token (JWT)
+```
+
+Contains minimal information like:
+
+```
+username
+email
+profile picture
+```
+
+OIDC tokens **are not meant to access protected APIs**.
+
+---
+
+# Token Types
+
+## Access Token
+
+Used to access APIs.
+
+Formats:
+
+```
+JWT Token
+Opaque Token
+```
+
+Opaque token example:
+
+```
+a87sdh78asd7asd8as7d8
+```
+
+Only Authorization Server understands it.
+
+---
+
+## ID Token
+
+Used for authentication.
+
+Always a **JWT token**.
+
+Structure:
+
+```
+HEADER.PAYLOAD.SIGNATURE
+```
+
+Contains user information.
+
+Example claims:
+
+```
+email
+name
+picture
+sub (user id)
+```
+
+---
+
+# Spring Boot OAuth2 Implementation
+
+We implement OAuth2 login using:
+
+```
+GitLab
+Auth0
+```
+
+Both act as **Authorization Servers**.
+
+---
+
+# Step 1 — Register Application
+
+The Spring Boot application must register with the authorization server.
+
+Example: GitLab
+
+Navigate to:
+
+```
+GitLab → Settings → Applications
+```
+
+Provide:
+
+```
+Application Name
+Redirect URI
+Scopes
+```
+
+Example scope:
+
+```
+openid
+```
+
+Purpose:
+
+```
+Authenticate user identity
+```
+
+---
+
+# Registration Output
+
+After registration we receive:
+
+```
+Client ID
+Client Secret
+```
+
+These must be stored securely.
+
+---
+
+# Step 2 — Add OAuth2 Dependency
+
+Add Spring Boot OAuth2 client dependency.
+
+```xml
+<dependency>
+ <groupId>org.springframework.boot</groupId>
+ <artifactId>spring-boot-starter-oauth2-client</artifactId>
+</dependency>
+```
+
+This dependency provides:
+
+```
+OAuth2 filters
+OAuth2 client support
+OIDC support
+```
+
+---
+
+# Step 3 — Configure application.properties
+
+Example configuration:
+
+```properties
+spring.security.oauth2.client.registration.gitlab.client-id=CLIENT_ID
+spring.security.oauth2.client.registration.gitlab.client-secret=CLIENT_SECRET
+spring.security.oauth2.client.registration.gitlab.scope=openid
+spring.security.oauth2.client.registration.gitlab.authorization-grant-type=authorization_code
+spring.security.oauth2.client.registration.gitlab.redirect-uri=http://localhost:8080/login/oauth2/code/gitlab
+
+spring.security.oauth2.client.provider.gitlab.authorization-uri=https://gitlab.com/oauth/authorize
+spring.security.oauth2.client.provider.gitlab.token-uri=https://gitlab.com/oauth/token
+spring.security.oauth2.client.provider.gitlab.issuer-uri=https://gitlab.com
+spring.security.oauth2.client.provider.gitlab.jwk-set-uri=https://gitlab.com/oauth/discovery/keys
+```
+
+Similar configuration is added for **Auth0**.
+
+---
+
+# Step 4 — Security Configuration
+
+Configure Spring Security.
+
+```java
+@Configuration
+public class SecurityConfig {
+
+@Bean
+SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+
+http
+    .authorizeHttpRequests(auth ->
+        auth.anyRequest().authenticated())
+    .oauth2Login(Customizer.withDefaults());
+
+return http.build();
+}
+
+}
+```
+
+This enables:
+
+```
+OAuth2 Login
+```
+
+---
+
+# Step 5 — Simple Controller
+
+Example controller:
+
+```java
+@RestController
+public class TestController {
+
+@GetMapping("/")
+public String home() {
+return "Hello, you are logged in";
+}
+
+@GetMapping("/users")
+public String users() {
+return "Fetch user details successfully";
+}
+
+}
+```
+
+---
+
+# Default Login Page
+
+When visiting:
+
+```
+http://localhost:8080
+```
+
+Spring Security automatically generates a login page.
+
+Example:
+
+```
+Login with Auth0
+Login with GitLab
+```
+
+This page is generated by:
+
+```
+DefaultLoginPageGeneratingFilter
+```
+
+---
+
+# OAuth2 Login Flow (Spring Security)
+
+### Step 1
+
+User opens:
+
+```
+localhost:8080
+```
+
+Security redirects to:
+
+```
+/login
+```
+
+---
+
+### Step 2
+
+Login page displays available providers.
+
+Example:
+
+```
+Auth0
+GitLab
+```
+
+These values come from:
+
+```
+application.properties
+```
+
+---
+
+### Step 3
+
+User selects provider.
+
+Example:
+
+```
+GitLab
+```
+
+Request:
+
+```
+/oauth2/authorization/gitlab
+```
+
+Handled by:
+
+```
+OAuth2AuthorizationRequestRedirectFilter
+```
+
+---
+
+### Step 4
+
+User redirected to Authorization Server.
+
+Example:
+
+```
+GitLab Login Page
+```
+
+User enters credentials.
+
+---
+
+### Step 5
+
+Authorization Server redirects back.
+
+```
+/login/oauth2/code/gitlab
+```
+
+Response contains:
+
+```
+Authorization Code
+```
+
+---
+
+### Step 6
+
+Spring Security exchanges code for token.
+
+Handled by:
+
+```
+OidcAuthorizationCodeAuthenticationProvider
+```
+
+Request sent to:
+
+```
+Token Endpoint
+```
+
+Authorization Server returns:
+
+```
+Access Token
+ID Token
+Refresh Token
+```
+
+---
+
+# ID Token Example
+
+ID Token is JWT.
+
+Example structure:
+
+```
+HEADER.PAYLOAD.SIGNATURE
+```
+
+Decoded payload example:
+
+```
+{
+ "email": "user@gmail.com",
+ "name": "Shreyansh",
+ "picture": "profile.jpg"
+}
+```
+
+---
+
+# Stateful Behavior (Default)
+
+Spring Security stores authentication in:
+
+```
+HTTP Session
+```
+
+Session stored in:
+
+```
+SecurityContextHolder
+```
+
+Because of this:
+
+```
+Browser requests succeed
+Postman requests fail
+```
+
+Since Postman does not send session cookie.
+
+---
+
+# Making OAuth2 Stateless
+
+To make system stateless we must:
+
+```
+Return ID Token to client
+Client sends token with each request
+Server validates token every request
+```
+
+---
+
+# Custom Success Handler
+
+Create a custom success handler to return ID token.
+
+```java
+@Component
+public class CustomOAuth2SuccessHandler
+        implements AuthenticationSuccessHandler {
+
+@Override
+public void onAuthenticationSuccess(
+ HttpServletRequest request,
+ HttpServletResponse response,
+ Authentication authentication) throws IOException {
+
+OidcUser oidcUser = (OidcUser) authentication.getPrincipal();
+
+String idToken = oidcUser.getIdToken().getTokenValue();
+
+response.getWriter().write(idToken);
+}
+
+}
+```
+
+---
+
+# Update Security Config
+
+```java
+http
+.oauth2Login(oauth ->
+    oauth.successHandler(customOAuth2SuccessHandler)
+);
+```
+
+Also disable sessions:
+
+```java
+http.sessionManagement()
+.sessionCreationPolicy(SessionCreationPolicy.STATELESS);
+```
+
+---
+
+# Token Validation Filter
+
+Create filter to validate token.
+
+```java
+public class OAuthValidationFilter extends OncePerRequestFilter {
+
+@Override
+protected void doFilterInternal(
+ HttpServletRequest request,
+ HttpServletResponse response,
+ FilterChain chain) throws ServletException, IOException {
+
+String token = request.getHeader("Authorization");
+
+if(token != null) {
+
+JwtDecoder decoder =
+JwtDecoders.fromIssuerLocation("issuer-url");
+
+Jwt jwt = decoder.decode(token);
+
+}
+
+chain.doFilter(request,response);
+
+}
+}
+```
+
+---
+
+# Token Validation Process
+
+Steps:
+
+```
+1. Extract token from Authorization header
+2. Identify issuer
+3. Fetch public key (JWK endpoint)
+4. Verify JWT signature
+5. Decode payload
+6. Store authentication in SecurityContext
+```
+
+Public key endpoint:
+
+```
+jwks_uri
+```
+
+Used for JWT signature verification.
+
+---
+
+# Final Request Flow
+
+```
+Client → Login request
+↓
+Spring Security → OAuth2 Login
+↓
+Authorization Server → Authentication
+↓
+Authorization Code returned
+↓
+Token endpoint called
+↓
+Access Token + ID Token returned
+↓
+Custom handler returns ID Token
+↓
+Client stores token
+↓
+Client calls APIs with Bearer Token
+↓
+Validation filter verifies token
+↓
+Access granted
+```
+
+---
+
+# OAuth2 Architecture (Final)
+
+```
+User
+ |
+ v
+Client (Spring Boot App)
+ |
+ v
+Authorization Server (GitLab/Auth0)
+ |
+ v
+Resource Server (User Data)
+```
+
+---
+
+# Key Takeaways
+
+OAuth2 provides:
+
+```
+Secure third-party authorization
+```
+
+OIDC provides:
+
+```
+User authentication
+```
+
+Spring Boot provides:
+
+```
+Built-in OAuth2 client support
+```
+
+Stateless architecture requires:
+
+```
+Token based authentication
+JWT validation on every request
+```
+
+---
+
+# Summary
+
+OAuth2 login in Spring Boot requires:
+
+```
+1. Register application with provider
+2. Add OAuth2 client dependency
+3. Configure application.properties
+4. Enable oauth2Login in security config
+5. Handle authentication success
+6. Validate tokens
+```
+
+This allows secure login using:
+
+```
+Google
+GitHub
+GitLab
+Auth0
+```
+
+without managing user passwords.
